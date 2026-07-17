@@ -14,13 +14,14 @@
   <p align="center">Home Page</p>
 </div>
 
-# **Youtube Video for step by step Demonstration!**
-[![Video Tutorial](https://img.youtube.com/vi/g8X5AoqCJHc/0.jpg)](https://youtu.be/g8X5AoqCJHc)
+# Netflix Clone — DevSecOps Project
 
+A Netflix-style streaming UI backed by **Trakt** (movie/show data) and
+**OMDb** (poster images), deployed with a full DevSecOps pipeline: Jenkins,
+SonarQube, Trivy, OWASP Dependency-Check, Docker, Kubernetes, Prometheus,
+Grafana, and ArgoCD.
 
-## Susbcribe:
-[https://www.youtube.com/@cloudchamp?
-](https://www.youtube.com/@cloudchamp?sub_confirmation=1)
+**Stack:** React · TypeScript · Vite · MUI · Redux Toolkit Query · video.js
 
 # Deploy Netflix Clone on Cloud using Jenkins - DevSecOps Project!
 
