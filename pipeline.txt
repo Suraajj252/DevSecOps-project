@@ -1,7 +1,7 @@
 pipeline{
     agent any
     tools{
-        jdk 'jdk17'
+        jdk 'jdk21'
         // Bumped from 'node16' -> 'node20': Node 16 is EOL and the app's
         // toolchain (Vite 5 / TypeScript 5, see package.json) requires
         // Node >=18. Node 20 LTS is what we validated against Ubuntu 26.04.

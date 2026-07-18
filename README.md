@@ -27,9 +27,9 @@ Grafana, and ArgoCD.
 
 ### **Phase 1: Initial Setup and Deployment**
 
-**Step 1: Launch EC2 (Ubuntu 22.04):**
+**Step 1: Launch EC2 (Ubuntu 24.04):**
 
-- Provision an EC2 instance on AWS with Ubuntu 22.04.
+- Provision an EC2 instance on AWS with Ubuntu 24.04.
 - Connect to the instance using SSH.
 
 **Step 2: Clone the Code:**
@@ -130,11 +130,11 @@ docker build --build-arg VITE_APP_TRAKT_CLIENT_ID=<your-trakt-client-id> --build
     
     ```bash
     sudo apt update
-    sudo apt install fontconfig openjdk-17-jre
+    sudo apt install fontconfig openjdk-21-jre
     java -version
-    openjdk version "17.0.8" 2023-07-18
-    OpenJDK Runtime Environment (build 17.0.8+7-Debian-1deb12u1)
-    OpenJDK 64-Bit Server VM (build 17.0.8+7-Debian-1deb12u1, mixed mode, sharing)
+    openjdk version "21.0.5" 2026-01-21
+    OpenJDK Runtime Environment (build 21.0.5+11-Debian-1deb12u1)
+    OpenJDK 64-Bit Server VM (build 21.0.5+11-Debian-1deb12u1, mixed mode, sharing)
     
     #jenkins
     sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
@@ -168,7 +168,7 @@ Install below plugins
 
 ### **Configure Java and Nodejs in Global Tool Configuration**
 
-Goto Manage Jenkins → Tools → Install JDK(17) and NodeJs(16)→ Click on Apply and Save
+Goto Manage Jenkins → Tools → Install JDK(21) and NodeJs(20)→ Click on Apply and Save
 
 
 ### SonarQube
@@ -196,7 +196,7 @@ Create a Jenkins webhook
 pipeline {
     agent any
     tools {
-        jdk 'jdk17'
+        jdk 'jdk21'
         nodejs 'node20'
     }
     environment {
@@ -286,7 +286,7 @@ Now, you have installed the Dependency-Check plugin, configured the tool, and ad
 pipeline{
     agent any
     tools{
-        jdk 'jdk17'
+        jdk 'jdk21'
         // Bumped from 'node16' -> 'node20': Node 16 is EOL and the app's
         // toolchain (Vite 5 / TypeScript 5, see package.json) requires
         // Node >=18. Node 20 LTS is what we validated against Ubuntu 26.04.
@@ -422,14 +422,14 @@ pipeline{
 
    ```bash
    sudo useradd --system --no-create-home --shell /bin/false prometheus
-   wget https://github.com/prometheus/prometheus/releases/download/v2.47.1/prometheus-2.47.1.linux-amd64.tar.gz
+   wget https://github.com/prometheus/prometheus/releases/download/v3.13.1/prometheus-3.13.1.linux-amd64.tar.gz
    ```
 
    Extract Prometheus files, move them, and create directories:
 
    ```bash
-   tar -xvf prometheus-2.47.1.linux-amd64.tar.gz
-   cd prometheus-2.47.1.linux-amd64/
+   tar -xvf prometheus-3.13.1.linux-amd64.tar.gz
+   cd prometheus-3.13.1.linux-amd64/
    sudo mkdir -p /data /etc/prometheus
    sudo mv prometheus promtool /usr/local/bin/
    sudo mv consoles/ console_libraries/ /etc/prometheus/
@@ -510,14 +510,14 @@ pipeline{
 
    ```bash
    sudo useradd --system --no-create-home --shell /bin/false node_exporter
-   wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz
+   wget https://github.com/prometheus/node_exporter/releases/download/v1.12.1/node_exporter-1.12.1.linux-amd64.tar.gz
    ```
 
    Extract Node Exporter files, move the binary, and clean up:
 
    ```bash
-   tar -xvf node_exporter-1.6.1.linux-amd64.tar.gz
-   sudo mv node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/
+   tar -xvf node_exporter-1.12.1.linux-amd64.tar.gz
+   sudo mv node_exporter-1.12.1.linux-amd64/node_exporter /usr/local/bin/
    rm -rf node_exporter*
    ```
 
@@ -611,7 +611,7 @@ pipeline{
 
 ####Grafana
 
-**Install Grafana on Ubuntu 22.04 and Set it up to Work with Prometheus**
+**Install Grafana on Ubuntu 24.04 and Set it up to Work with Prometheus**
 
 **Step 1: Install Dependencies:**
 
