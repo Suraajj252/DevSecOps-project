@@ -2,14 +2,14 @@ pipeline{
     agent any
     tools{
         jdk 'jdk21'
-        // Bumped from 'node16' -> 'node20': Node 16 is EOL and the app's
-        // toolchain (Vite 5 / TypeScript 5, see package.json) requires
-        // Node >=18. Node 20 LTS is what we validated against Ubuntu 26.04.
+        // Bumped: node16 -> node20 -> node24. Node 16 and Node 20 are both EOL;
+        // the app's toolchain (Vite 5 / TypeScript 5, see package.json) requires
+        // Node >=20. Node 24 is the current Active LTS line (validated against Ubuntu 26.04).
         // NOTE: this string must match an actual NodeJS installation name
         // configured under Jenkins > Manage Jenkins > Tools > NodeJS
-        // installations - create one named "node20" (or rename this to
+        // installations - create one named "node24" (or rename this to
         // whatever you name it) before running the pipeline.
-        nodejs 'node20'
+        nodejs 'node24'
     }
     environment {
         SCANNER_HOME=tool 'sonar-scanner'
@@ -22,7 +22,7 @@ pipeline{
         }
         stage('Checkout from Git'){
             steps{
-                git branch: 'main', url: 'https://github.com/Aj7Ay/Netflix-clone.git'
+                git branch: 'main', url: 'https://github.com/Suraajj252/DevSecOps-project.git'
             }
         }
         stage("Sonarqube Analysis "){
@@ -36,7 +36,11 @@ pipeline{
         stage("quality gate"){
            steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
+                    // abortPipeline is now TRUE: if SonarQube's quality gate fails
+                    // (coverage too low, new bugs/vulnerabilities, bad duplication %,
+                    // etc.) the pipeline stops here instead of silently deploying
+                    // anyway. This is the whole point of having a quality gate.
+                    waitForQualityGate abortPipeline: true, credentialsId: 'Sonar-token'
                 }
             } 
         }
@@ -48,12 +52,22 @@ pipeline{
         stage('OWASP FS SCAN') {
             steps {
                 dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                // failedTotalCritical fails THIS STAGE (marks it unstable/failed)
+                // if 1 or more dependencies have a CVSS score in the CRITICAL band.
+                // Without this threshold, the report is generated but nothing acts
+                // on it - the pipeline would happily deploy a critical CVE.
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml', failedTotalCritical: 1
             }
         }
         stage('TRIVY FS SCAN') {
             steps {
-                sh "trivy fs . > trivyfs.txt"
+                // --exit-code 1 makes Trivy itself return a non-zero exit status
+                // when it finds a HIGH or CRITICAL issue, which makes this `sh`
+                // step - and therefore the whole pipeline - fail. Previously this
+                // just wrote a report to a file and moved on regardless of what
+                // was found. `tee` keeps the human-readable report AND still lets
+                // the exit code propagate (a plain `>` redirect would not).
+                sh "trivy fs --exit-code 1 --severity HIGH,CRITICAL . | tee trivyfs.txt"
             }
         }
         stage("Docker Build & Push"){
@@ -80,8 +94,11 @@ pipeline{
                                  --build-arg VITE_APP_OMDB_API_KEY=$OMDB_API_KEY \
                                  -t netflix .
                            '''
-                           sh "docker tag netflix nasi101/netflix:latest "
-                           sh "docker push nasi101/netflix:latest "
+                           // CHANGE THIS: nasi101 is the original tutorial author's
+                           // Docker Hub account - you cannot push there. Replace
+                           // with your own Docker Hub username throughout this file.
+                           sh "docker tag netflix <your-dockerhub-username>/netflix:latest "
+                           sh "docker push <your-dockerhub-username>/netflix:latest "
                        }
                    }
                 }
@@ -89,17 +106,27 @@ pipeline{
         }
         stage("TRIVY"){
             steps{
-                sh "trivy image nasi101/netflix:latest > trivyimage.txt" 
+                // Same reasoning as the FS scan above: without --exit-code 1 this
+                // stage always "succeeds" even if the built image has a critical
+                // vulnerability, which means the very next stage would deploy it.
+                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL <your-dockerhub-username>/netflix:latest | tee trivyimage.txt"
             }
         }
         stage('Deploy to container'){
             steps{
-                sh 'docker run -d -p 8081:80 nasi101/netflix:latest'
+                sh 'docker run -d -p 8081:80 <your-dockerhub-username>/netflix:latest'
             }
         }
         stage('Deploy to kubernets'){
             steps{
                 script{
+                    // NOTE: if you've adopted the GitOps flow (see
+                    // Kubernetes/argocd-application.yaml), ArgoCD is already
+                    // watching this repo and will auto-sync on every push -
+                    // this stage would then be doing the same deploy twice.
+                    // Either remove this stage once ArgoCD is running, or
+                    // keep it only as a fallback for clusters not yet
+                    // connected to ArgoCD.
                     dir('Kubernetes') {
                         withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'k8s', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') {
                                 sh 'kubectl apply -f deployment.yml'
@@ -118,7 +145,13 @@ pipeline{
             body: "Project: ${env.JOB_NAME}<br/>" +
                 "Build Number: ${env.BUILD_NUMBER}<br/>" +
                 "URL: ${env.BUILD_URL}<br/>",
-            to: 'iambatmanthegoat@gmail.com',                                #change mail here
+            // CHANGE THIS: set your own notification address, ideally via a
+            // Jenkins credential/environment variable rather than hard-coding
+            // it here. NOTE: the previous version of this file used `#` for
+            // this comment, which is invalid inside a Groovy map literal -
+            // pipelines only support `//` and `/* */` comments. That would
+            // have caused a compile/parse error the first time this ran.
+            to: 'your-email@example.com',
             attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
         }
     }

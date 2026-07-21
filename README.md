@@ -27,9 +27,9 @@ Grafana, and ArgoCD.
 
 ### **Phase 1: Initial Setup and Deployment**
 
-**Step 1: Launch EC2 (Ubuntu 24.04):**
+**Step 1: Launch EC2 (Ubuntu 26.04):**
 
-- Provision an EC2 instance on AWS with Ubuntu 24.04.
+- Provision an EC2 instance on AWS with Ubuntu 26.04.
 - Connect to the instance using SSH.
 
 **Step 2: Clone the Code:**
@@ -38,7 +38,7 @@ Grafana, and ArgoCD.
 - Clone your application's code repository onto the EC2 instance:
     
     ```bash
-    git clone https://github.com/N4si/DevSecOps-Project.git
+    git clone https://github.com/Suraajj252/DevSecOps-project.git
     ```
     
 
@@ -197,7 +197,7 @@ pipeline {
     agent any
     tools {
         jdk 'jdk21'
-        nodejs 'node20'
+        nodejs 'node24'
     }
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
@@ -210,7 +210,7 @@ pipeline {
         }
         stage('Checkout from Git') {
             steps {
-                git branch: 'main', url: 'https://github.com/N4si/DevSecOps-Project.git'
+                git branch: 'main', url: 'https://github.com/Suraajj252/DevSecOps-project.git'
             }
         }
         stage("Sonarqube Analysis") {
@@ -224,7 +224,8 @@ pipeline {
         stage("quality gate") {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token'
+                    // abortPipeline: true so a failed gate actually stops the build
+                    waitForQualityGate abortPipeline: true, credentialsId: 'Sonar-token'
                 }
             }
         }
@@ -287,14 +288,14 @@ pipeline{
     agent any
     tools{
         jdk 'jdk21'
-        // Bumped from 'node16' -> 'node20': Node 16 is EOL and the app's
-        // toolchain (Vite 5 / TypeScript 5, see package.json) requires
-        // Node >=18. Node 20 LTS is what we validated against Ubuntu 26.04.
+        // Bumped: node16 -> node20 -> node24. Node 16 and Node 20 are both EOL;
+        // the app's toolchain (Vite 5 / TypeScript 5, see package.json) requires
+        // Node >=20. Node 24 is the current Active LTS line (validated against Ubuntu 26.04).
         // NOTE: this string must match an actual NodeJS installation name
         // configured under Jenkins > Manage Jenkins > Tools > NodeJS
-        // installations - create one named "node20" (or rename this to
+        // installations - create one named "node24" (or rename this to
         // whatever you name it) before running the pipeline.
-        nodejs 'node20'
+        nodejs 'node24'
     }
     environment {
         SCANNER_HOME=tool 'sonar-scanner'
@@ -307,7 +308,7 @@ pipeline{
         }
         stage('Checkout from Git'){
             steps{
-                git branch: 'main', url: 'https://github.com/Aj7Ay/Netflix-clone.git'
+                git branch: 'main', url: 'https://github.com/Suraajj252/DevSecOps-project.git'
             }
         }
         stage("Sonarqube Analysis "){
@@ -321,7 +322,11 @@ pipeline{
         stage("quality gate"){
            steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
+                    // abortPipeline is now TRUE: if SonarQube's quality gate fails
+                    // (coverage too low, new bugs/vulnerabilities, bad duplication %,
+                    // etc.) the pipeline stops here instead of silently deploying
+                    // anyway. This is the whole point of having a quality gate.
+                    waitForQualityGate abortPipeline: true, credentialsId: 'Sonar-token'
                 }
             } 
         }
@@ -333,12 +338,22 @@ pipeline{
         stage('OWASP FS SCAN') {
             steps {
                 dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
-                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                // failedTotalCritical fails THIS STAGE (marks it unstable/failed)
+                // if 1 or more dependencies have a CVSS score in the CRITICAL band.
+                // Without this threshold, the report is generated but nothing acts
+                // on it - the pipeline would happily deploy a critical CVE.
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml', failedTotalCritical: 1
             }
         }
         stage('TRIVY FS SCAN') {
             steps {
-                sh "trivy fs . > trivyfs.txt"
+                // --exit-code 1 makes Trivy itself return a non-zero exit status
+                // when it finds a HIGH or CRITICAL issue, which makes this `sh`
+                // step - and therefore the whole pipeline - fail. Previously this
+                // just wrote a report to a file and moved on regardless of what
+                // was found. `tee` keeps the human-readable report AND still lets
+                // the exit code propagate (a plain `>` redirect would not).
+                sh "trivy fs --exit-code 1 --severity HIGH,CRITICAL . | tee trivyfs.txt"
             }
         }
         stage("Docker Build & Push"){
@@ -365,8 +380,11 @@ pipeline{
                                  --build-arg VITE_APP_OMDB_API_KEY=$OMDB_API_KEY \
                                  -t netflix .
                            '''
-                           sh "docker tag netflix nasi101/netflix:latest "
-                           sh "docker push nasi101/netflix:latest "
+                           // CHANGE THIS: nasi101 is the original tutorial author's
+                           // Docker Hub account - you cannot push there. Replace
+                           // with your own Docker Hub username throughout this file.
+                           sh "docker tag netflix <your-dockerhub-username>/netflix:latest "
+                           sh "docker push <your-dockerhub-username>/netflix:latest "
                        }
                    }
                 }
@@ -374,17 +392,27 @@ pipeline{
         }
         stage("TRIVY"){
             steps{
-                sh "trivy image nasi101/netflix:latest > trivyimage.txt" 
+                // Same reasoning as the FS scan above: without --exit-code 1 this
+                // stage always "succeeds" even if the built image has a critical
+                // vulnerability, which means the very next stage would deploy it.
+                sh "trivy image --exit-code 1 --severity HIGH,CRITICAL <your-dockerhub-username>/netflix:latest | tee trivyimage.txt"
             }
         }
         stage('Deploy to container'){
             steps{
-                sh 'docker run -d -p 8081:80 nasi101/netflix:latest'
+                sh 'docker run -d -p 8081:80 <your-dockerhub-username>/netflix:latest'
             }
         }
         stage('Deploy to kubernets'){
             steps{
                 script{
+                    // NOTE: if you've adopted the GitOps flow (see
+                    // Kubernetes/argocd-application.yaml), ArgoCD is already
+                    // watching this repo and will auto-sync on every push -
+                    // this stage would then be doing the same deploy twice.
+                    // Either remove this stage once ArgoCD is running, or
+                    // keep it only as a fallback for clusters not yet
+                    // connected to ArgoCD.
                     dir('Kubernetes') {
                         withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'k8s', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') {
                                 sh 'kubectl apply -f deployment.yml'
@@ -403,38 +431,17 @@ pipeline{
             body: "Project: ${env.JOB_NAME}<br/>" +
                 "Build Number: ${env.BUILD_NUMBER}<br/>" +
                 "URL: ${env.BUILD_URL}<br/>",
-            to: 'iambatmanthegoat@gmail.com',                                #change mail here
+            // CHANGE THIS: set your own notification address, ideally via a
+            // Jenkins credential/environment variable rather than hard-coding
+            // it here. NOTE: the previous version of this file used `#` for
+            // this comment, which is invalid inside a Groovy map literal -
+            // pipelines only support `//` and `/* */` comments. That would
+            // have caused a compile/parse error the first time this ran.
+            to: 'your-email@example.com',
             attachmentsPattern: 'trivyfs.txt,trivyimage.txt'
         }
     }
-}
-```
-
-**Phase 4: Monitoring**
-
-1. **Install Prometheus and Grafana:**
-
-   Set up Prometheus and Grafana to monitor your application.
-
-   **Installing Prometheus:**
-
-   First, create a dedicated Linux user for Prometheus and download Prometheus:
-
-   ```bash
-   sudo useradd --system --no-create-home --shell /bin/false prometheus
-   wget https://github.com/prometheus/prometheus/releases/download/v3.13.1/prometheus-3.13.1.linux-amd64.tar.gz
-   ```
-
-   Extract Prometheus files, move them, and create directories:
-
-   ```bash
-   tar -xvf prometheus-3.13.1.linux-amd64.tar.gz
-   cd prometheus-3.13.1.linux-amd64/
-   sudo mkdir -p /data /etc/prometheus
-   sudo mv prometheus promtool /usr/local/bin/
-   sudo mv consoles/ console_libraries/ /etc/prometheus/
-   sudo mv prometheus.yml /etc/prometheus/prometheus.yml
-   ```
+}   ```
 
    Set ownership for directories:
 
@@ -611,7 +618,7 @@ pipeline{
 
 ####Grafana
 
-**Install Grafana on Ubuntu 24.04 and Set it up to Work with Prometheus**
+**Install Grafana on Ubuntu 26.04 and Set it up to Work with Prometheus**
 
 **Step 1: Install Dependencies:**
 
@@ -778,27 +785,40 @@ Replace 'your-job-name' with a descriptive name for your job. The static_configs
 
 Don't forget to reload or restart Prometheus to apply these changes to your configuration.
 
-To deploy an application with ArgoCD, you can follow these steps, which I'll outline in Markdown format:
-
 ### Deploy Application with ArgoCD
 
 1. **Install ArgoCD:**
 
-   You can install ArgoCD on your Kubernetes cluster by following the instructions provided in the [EKS Workshop](https://archive.eksworkshop.com/intermediate/290_argocd/install/) documentation.
+    ```bash
+    kubectl create namespace argocd
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    ```
 
-2. **Set Your GitHub Repository as a Source:**
+2. **Expose the ArgoCD API server and log in:**
 
-   After installing ArgoCD, you need to set up your GitHub repository as a source for your application deployment. This typically involves configuring the connection to your repository and defining the source for your ArgoCD application. The specific steps will depend on your setup and requirements.
+    ```bash
+    kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+    export ARGOCD_SERVER=$(kubectl get svc argocd-server -n argocd -o json | jq --raw-output '.status.loadBalancer.ingress[0].hostname')
+    export ARGO_PWD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+    echo "URL: $ARGOCD_SERVER  |  user: admin  |  pass: $ARGO_PWD"
+    ```
 
-3. **Create an ArgoCD Application:**
-   - `name`: Set the name for your application.
-   - `destination`: Define the destination where your application should be deployed.
-   - `project`: Specify the project the application belongs to.
-   - `source`: Set the source of your application, including the GitHub repository URL, revision, and the path to the application within the repository.
-   - `syncPolicy`: Configure the sync policy, including automatic syncing, pruning, and self-healing.
+3. **Apply the Application manifest:**
+
+   This repo includes a ready-to-use manifest at `Kubernetes/argocd-application.yaml`, already pointing at `Suraajj252/DevSecOps-project`. Apply it directly:
+
+    ```bash
+    kubectl apply -f Kubernetes/argocd-application.yaml
+    ```
+
+   This one file replaces the manual `kubectl apply -f deployment.yml` / `service.yml` steps that Jenkins runs today. ArgoCD will:
+   - Automatically sync the cluster to match whatever is in `Kubernetes/` on the `main` branch (`prune: true`, `selfHeal: true` in the manifest)
+   - Revert any manual `kubectl edit`/`kubectl delete` drift back to what's declared in Git
+   - Create the `default` namespace automatically if it doesn't already exist
 
 4. **Access your Application**
-   - To Access the app make sure port 30007 is open in your security group and then open a new tab paste your NodeIP:30007, your app should be running.
+   - To access the app, make sure port 30007 is open in your security group, then open a new tab and go to `http://<NodeIP>:30007` — your app should be running.
+   - To watch the sync status: `kubectl get application netflix-app -n argocd` or open the ArgoCD UI at the LoadBalancer URL from step 2.
 
 **Phase 7: Cleanup**
 

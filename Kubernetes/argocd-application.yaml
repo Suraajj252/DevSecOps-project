@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: netflix-app
+  namespace: argocd
+  # Prevents this Application resource itself from being deleted/pruned
+  # if it's ever swept up by another ArgoCD app-of-apps sync.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/Suraajj252/DevSecOps-project.git
+    targetRevision: main
+    # This repo keeps plain manifests directly in Kubernetes/ (not a Helm
+    # chart or Kustomize overlay), so path + directory recurse is enough.
+    path: Kubernetes
+    directory:
+      recurse: false
+      # argocd-application.yaml itself and node-service.yaml (Prometheus
+      # node-exporter, deployed separately/manually) are excluded so ArgoCD
+      # only manages the actual app's Deployment + Service.
+      exclude: '{argocd-application.yaml,node-service.yaml}'
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      # prune: if a manifest is removed from Git, ArgoCD deletes the
+      # matching cluster resource instead of leaving it orphaned.
+      prune: true
+      # selfHeal: if someone manually kubectl-edits or deletes something
+      # in the cluster (e.g. accidentally scales the Deployment down),
+      # ArgoCD reverts it back to what's declared in Git. This is the
+      # core GitOps guarantee: Git is the single source of truth, not
+      # whatever state the cluster happens to be in.
+      selfHeal: true
+    syncOptions:
+      # Creates the destination namespace automatically if it doesn't
+      # already exist, instead of failing the sync.
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

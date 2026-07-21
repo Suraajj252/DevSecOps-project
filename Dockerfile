@@ -1,5 +1,5 @@
 # ---- Stage 1: build the static React/Vite bundle -------------------------
-FROM node:20-alpine as builder
+FROM node:24-alpine as builder
 WORKDIR /app
 
 # Copy just the dependency manifests first so Docker can cache "yarn install"
