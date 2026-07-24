@@ -16,15 +16,13 @@ spec:
     spec:
       containers:
       - name: netflix-app
-        # CHANGE THIS: nasi101 is the original tutorial author's Docker Hub
-        # account. Replace with your own username (must match pipeline.txt).
-        image: <your-dockerhub-username>/netflix:latest
+        # No Docker Hub / registry used - image is built locally on this same
+        # EC2 node by the Jenkins pipeline, so Kubernetes must use the local
+        # copy instead of trying to pull it from anywhere over the network.
+        image: netflix:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 80
-        # Resource requests/limits: without these, a single misbehaving pod
-        # can consume all CPU/memory on a node and starve every other pod
-        # scheduled there. requests = what's reserved for scheduling;
-        # limits = the hard ceiling before Kubernetes throttles/OOM-kills it.
         resources:
           requests:
             cpu: "100m"
@@ -32,18 +30,12 @@ spec:
           limits:
             cpu: "500m"
             memory: "256Mi"
-        # Readiness probe: tells Kubernetes when this pod is actually ready
-        # to receive traffic. Without it, a pod that's still starting up (or
-        # that nginx has crashed inside) still gets sent live user requests.
         readinessProbe:
           httpGet:
             path: /
             port: 80
           initialDelaySeconds: 5
           periodSeconds: 10
-        # Liveness probe: if this fails repeatedly, Kubernetes kills and
-        # restarts the container instead of leaving a hung/zombie process
-        # serving traffic indefinitely.
         livenessProbe:
           httpGet:
             path: /
